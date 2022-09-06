@@ -57,15 +57,27 @@ parser.add_argument("-s", "--server", choices=['projects', 'users'],
 parser.add_argument("-p", "--project", choices=['forms', 'submissions', 'app-users'],
                     help="project operations")
 parser.add_argument("-d", "--download", choices=['xml', 'xlsx', 'attach', 'submit', 'zip'],
-                    help="Download files")
-parser.add_argument("-up", "--upload", choices=['xml', 'xlsx', 'attach', 'submit', 'zip'],
-                    help="Download files")
-parser.add_argument('-u', '--user', help = 'ODK Central username (usually email)')
-parser.add_argument('-pw', '--password', help = 'ODK Central password')
+                    help="Download files from ODK Central")
+# subparsers = parser.add_subparsers(help='sub-command help')
+# parser_a = subparsers.add_parser('-d', help='download help')
+# parser_a.add_argument('bar', type=int, help='bar help')
+parser.add_argument("-u", "--upload", choices=['xml', 'xlsx', 'attach', 'submit', 'zip'],
+                    help="Upload files to ODK Central")
+# parser.add_argument('-u', '--user', help = 'ODK Central username (usually email)')
+# parser.add_argument('-pw', '--password', help = 'ODK Central password')
 parser.add_argument('-i', '--id', type=int, help = 'Project ID nunmber')
-parser.add_argument('-c', '--cache', action="store_true", help = 'cache data from ODK Central')
+parser.add_argument('-f', '--files', help = 'Filenames of xml or attachments')
+# parser.add_argument('-c', '--cache', action="store_true", help = 'cache data from ODK Central')
 
 args = parser.parse_args()
+
+# Get any files for upload or download
+files = list()
+if args.files:
+    tmp = args.files.split(",")
+    for file in tmp:
+        files.append(file)
+    print(files)
 
 # if verbose, dump to the terminal.
 if args.verbose is not None:
@@ -78,39 +90,51 @@ if args.verbose is not None:
     ch.setFormatter(formatter)
     root.addHandler(ch)    
 
-# The ODK Central server
+# Commands to the ODK Central server, which gets data that applies
+# to all projects on the server.
 if args.server:
     central = OdkCentral()
     # central.authenticate()
     if args.server == "projects":
-        projects = central.listProjects().json()
+        projects = central.listProjects()
         print("There are %d projects on this ODK Central server" % len(projects))
-        for project in projects:
+        ordered = sorted(projects, key=lambda item: item.get('id'))
+        for project in ordered:
             print("\t%s: %s" % (project['id'], project['name']))
     elif args.server == "users":
         users = central.listUsers()
-        logging.info("There are %d users on this ODK Central server" % len(users.json()))
-        for project in projects.json():
-            print(project['id'], project['name'])
+        logging.info("There are %d users on this ODK Central server" % len(users))
+        ordered = sorted(users, key=lambda item: item.get('id'))
+        for user in ordered:
+            print("%s: %s (%s)" % (user['id'], user['displayName'], user['email']))
 
+# Commands to get data about a specific project on an ODK Central server.
 elif args.project:
     project = OdkProject()
+    # project.authenticate()
+    if args.id:
+        pass
     # form.authenticate()
     if args.project == "forms":
-        forms = project.listForms(4).json()
-        for form in forms:
+        forms = project.listForms(4)
+        ordered = sorted(forms, key=lambda item: item.get('xmlFormId'))
+        for form in ordered:
             print("\t%r: %r" % (form['xmlFormId'], form['name']))
     if args.project == "submissions":
-        submit = project.listSubmissions(4, "cemeteries").json()
-        for entry in submit:
-            print("\t%r" % entry)
+        submit = project.listSubmissions(4, "cemeteries")
+        # ordered = sorted(submit, key=lambda item: item.get('xmlFormId'))
+        for data in submit:
+            print("\t%s by user %s" % (data['instanceId'], data['submitterId']))
     if args.project == "app-users":
-        users = project.listAppUsers(4).json()
-        for user in users:
+        users = project.listAppUsers(4)
+        logging.info("There are %d app users on this ODK Central server" % len(users))
+        ordered = sorted(users, key=lambda item: item.get('id'))
+        for user in ordered:
             print("\t%r: %s" % (user['id'], user['displayName']))
 
 # This downloads files from the ODK server
 elif args.download:
+    print("Downloading %r" % files)
     form = OdkForm()
     if args.download == "xml":
         pass
@@ -125,6 +149,7 @@ elif args.download:
 
 # This uploads files to the ODK server
 elif args.upload:
+    print("Uploading %r" % files)
     form = OdkForm()
     if args.upload == "xml":
         pass
