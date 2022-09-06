@@ -98,7 +98,7 @@ class OdkCentral(object):
         projects = result.json()
         for project in projects:
             self.projects[project['id']] = project
-        return result
+        return projects
 
     def createProject(name=None):
         """Create a new project on an ODK Central server"""
@@ -111,7 +111,7 @@ class OdkCentral(object):
         url = self.base + "users"
         result = self.session.get(url, auth=self.auth)
         self.users = result.json()
-        return result
+        return self.users
         
     def dump(self):
         """Dump internal data structures, for debugging purposes only"""
@@ -132,32 +132,90 @@ class OdkCentral(object):
 
 class OdkProject(OdkCentral):
     """Class to manipulate a project on an ODK Central server"""
-    def __init__(self, data=None):
+    def __init__(self, session=None):
         super().__init__()
         self.forms = None
         self.submissions = None
         self.data = None
         self.appusers = None
-        if not data:
-            self.data = data
 
     def getData(self, keyword):
         return self.data[keyword]
 
     def listForms(self, id=None):
         """Fetch a list of forms in a project on an ODK Central server."""
-        url = self.base + f'projects/{id}/forms'
+        url = f'{self.base}projects/{id}/forms'
         result = self.session.get(url, auth=self.auth)
         self.forms = result.json()
-        return result
+        return self.forms
 
+    def listAppUsers(self, projectId=None):
+        """Fetch a list of app users for a project on an ODK Central server."""
+        url = f'{self.base}projects/{projectId}/app-users'
+        result = self.session.get(url, auth=self.auth)
+        self.appusers = result.json()
+        return self.appusers
+
+    def dump(self):
+        """Dump internal data structures, for debugging purposes only"""
+        super().dump()
+        print("There are %d forms in this project" % len(self.forms))
+        if self.data:
+            print("Project ID: %s" % self.data['id'])
+        for data in self.forms:
+            print("\t %s(%s): %s" % (data['xmlFormId'], data['version'], data['name']))
+        print("There are %d submissions in this project" % len(self.submissions))
+        for data in self.submissions:
+            print("\t%s: %s" % (data['instanceId'], data['createdAt']))
+        print("There are %d app users in this project" % len(self.appusers))
+        for data in self.appusers:
+            print("\t%s: %s" % (data['id'], data['displayName']))
+
+class OdkForm(OdkCentral):
+    """Class to manipulate a from on an ODK Central server"""
+    def __init__(self, session=None):
+        super().__init__()
+        self.name = None
+        # Draft is for a form that isn't published yet
+        self.draft = False
+        # this is only populated if self.getDetails() is called first.
+        self.data = dict()
+        self.attach = list()
+        self.publish = True
+        self.media = list()
+        self.xml = None
+        self.submissions = list()
+        # self.xmlFormId = None
+        # self.projectId = None
+
+    def getName(self):
+        """Extract the name from a form on an ODK Central server"""
+        if 'name' in self.data:
+            return self.data['name']
+        else:
+            logging.warning("Execute OdkForm.getDetails() to get this data.")
+
+    def getFormId(self):
+        """Extract the xmlFormId from a form on an ODK Central server"""
+        if 'xmlFormId' in self.data:
+            return self.data['xmlFormId']
+        else:
+            logging.warning("Execute OdkForm.getDetails() to get this data.")
+
+    def getDetails(self, projectId=None, xmlFormId=None):
+        """Get all the details for a form on an ODK Central server"""
+        url = f'{self.base}projects/{projectId}/forms/{xmlFormId}'
+        result = self.session.get(url, auth=self.auth)
+        self.data = result.json()
+        return result
+        
     def listSubmissions(self, projectId, formId):
         """Fetch a list of submission instances for a given form."""
-        url = self.base + f'projects/{projectId}/forms/{formId}/submissions'
+        url = f'{self.base}projects/{projectId}/forms/{formId}/submissions'
         result = self.session.get(url, auth=self.auth)
         self.submissions = result.json()
-        return result
-    
+        return self.submissions
+
     def getSubmission(self, projectId=None, formId=None, disk=False):
         """Fetch a CSV file of the submissions without media to a survey form."""
         url = self.base + f'projects/{projectId}/forms/{formId}/submissions.csv'
@@ -187,65 +245,6 @@ class OdkProject(OdkCentral):
         result = self.session.get(url, auth=self.auth)
         return result
 
-    def listAppUsers(self, projectId=None):
-        """Fetch a list of app users for a project on an ODK Central server."""
-        url = f'{self.base}projects/{projectId}/app-users'
-        result = self.session.get(url, auth=self.auth)
-        self.appusers = result.json()
-        return result
-
-    def dump(self):
-        """Dump internal data structures, for debugging purposes only"""
-        super().dump()
-        print("There are %d forms in this project" % len(self.forms))
-        if self.data:
-            print("Project ID: %s" % self.data['id'])
-        for data in self.forms:
-            print("\t %s(%s): %s" % (data['xmlFormId'], data['version'], data['name']))
-        print("There are %d submissions in this project" % len(self.submissions))
-        for data in self.submissions:
-            print("\t%s: %s" % (data['instanceId'], data['createdAt']))
-        print("There are %d app users in this project" % len(self.appusers))
-        for data in self.appusers:
-            print("\t%s: %s" % (data['id'], data['displayName']))
-
-class OdkForm(OdkCentral):
-    """Class to manipulate a from on an ODK Central server"""
-    def __init__(self, data=None):
-        super().__init__()
-        self.name = None
-        # Draft is for a form that isn't published yet
-        self.draft = True
-        # this is only populated if self.getDetails() is called first.
-        self.data = dict()
-        self.attach = list()
-        self.publish = True
-        self.media = list()
-        self.xml = None
-        # self.xmlFormId = None
-        # self.projectId = None
-
-    def getName(self):
-        """Extract the name from a form on an ODK Central server"""
-        if 'name' in self.data:
-            return self.data['name']
-        else:
-            logging.warning("Execute OdkForm.getDetails() to get this data.")
-
-    def getFormId(self):
-        """Extract the xmlFormId from a form on an ODK Central server"""
-        if 'xmlFormId' in self.data:
-            return self.data['xmlFormId']
-        else:
-            logging.warning("Execute OdkForm.getDetails() to get this data.")
-
-    def getDetails(self, projectId=None, xmlFormId=None):
-        """Get all the details for a form on an ODK Central server"""
-        url = f'{self.base}projects/{projectId}/forms/{xmlFormId}'
-        result = self.session.get(url, auth=self.auth)
-        self.data = result.json()
-        return result
-        
     def addMedia(self, media=None, filespec=None):
         """Add a data file to this form"""
         # FIXME: this also needs the data
@@ -261,9 +260,10 @@ class OdkForm(OdkCentral):
             url = f'{self.base}projects/{projectId}/forms/{xmlFormId}/draft/attachments'
         else:
             url = f'{self.base}projects/{projectId}/forms/{xmlFormId}/attachments'
+        print(url)
         result = self.session.get(url, auth=self.auth)
         self.media = result.json()
-        return result
+        return self.media
 
     def uploadMedia(self, projectId=None, xmlFormId=None, filespec=None):
         """Upload an attachement to the ODK Central server"""
@@ -286,11 +286,12 @@ class OdkForm(OdkCentral):
         else:
             url = f'{self.base}projects/{projectId}/forms/{xmlFormId}/attachments/{filename}'
         result = self.session.get(url, auth=self.auth)
-        self.media = result.content()
-        return result
+        self.media = result.content
+        return self.media
 
-    def createForm(self, projectId=None, xmlFormId=None, filespec=None):
+    def createForm(self, projectId=None, xmlFormId=None, filespec=None, draft=True):
         """Create a new form on an ODK Central server"""
+        self.draft = draft
         headers = {
            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
            f'X-XlsForm-FormId-Fallback': filespec
@@ -370,8 +371,8 @@ if __name__ == '__main__':
     # List all the app users for this project. FIXME: don't hardcode the project ID
     project.listAppUsers(4)
     # List all the submissions for this project. FIXME: don't hardcode the project ID ad form name
-    project.listSubmissions(4, "cemeteries")
-    project.getSubmission(4, "cemeteries")
+    # project.listSubmissions(4, "cemeteries")
+    # project.getSubmission(4, "cemeteries")
     # Dump all the internal data
     project.dump()
 
@@ -379,8 +380,6 @@ if __name__ == '__main__':
     form = OdkForm()
     form.authenticate()
     x = form.getDetails(4, 'cemeteries')
-    # print(x.json())
-    # x = form.listMedia(4, 'cemeteries')
     # print(x.json())
     # x = form.listMedia(4, "waterpoints", 'uuid:fbe3ef41-6298-40c1-a694-6c9d25a8c476')
     # Make a new form
@@ -390,8 +389,14 @@ if __name__ == '__main__':
     # csv2 = "/home/rob/projects/HOT/odkconvert.git/XForms/towns.csv"
     # form.addMedia(csv1)
     # form.addMedia(csv2)
-    x = form.createForm(4, 'cemeteries', "cemeteries.xls")
+    x = form.createForm(4, 'cemeteries', "cemeteries.xls", True)
+    print(x.json())
+    # x = form.publish(4, 'cemeteries', "cemeteries.xls")
     print(x.json())
     x = form.uploadMedia(4, 'cemeteries', "towns.csv")
+    print(x.json())
+    x = form.uploadMedia(4, 'cemeteries', "municipality.csv")
+    print(x.json())
+    x = form.listMedia(4, 'cemeteries')
     print(x.json())
     form.dump()
